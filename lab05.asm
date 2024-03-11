@@ -24,10 +24,12 @@ $include (c8051f020.inc)
 
 	; declaring variables
 	dseg at 30h
-	old_btn: 	ds 1		; old buttons
-	numbr:		ds 1		; whole number value 0-9
-	decimal:	ds 1		; decimal value 0-9
-	running:	ds 1		; 1 if clock is running, 0 if stopped
+	old_btn: 		ds 1		; old buttons
+	numbr:			ds 1		; whole number value 0-9
+	decimal:		ds 1		; decimal value 0-9
+	running:		ds 1		; 1 if clock is running, 0 if stopped
+	ms_counter:	ds 1		; counter to check 
+	
 
 	cseg
 	mov		wdtcn,#0DEh
@@ -45,6 +47,7 @@ int_t2:
 	org 002BH		; location where timer interrupt will jump to
 	jmp t2_isr	; jump to interrupt service routine for timer 2
 
+
 ;--------------------------------------------------------------------
 ;main
 		
@@ -54,7 +57,9 @@ int_t2:
 ; starting up.
 ;--------------------------------------------------------------------
 main:
-	; fosc = 22.1184 MHz. => fosc/12 * 10ms = 18432. This is the value
+	
+
+; fosc = 22.1184 MHz. => fosc/12 * 10ms = 18432. This is the value
 	; used for timer 2 to obtain an overflow every 10ms
 	mov 	RCAP2H,#HIGH(-18432)	; set high bits for timer
 	mov 	RCAP2L,#LOW(-18432)		; set low bits for timer
@@ -64,7 +69,7 @@ main:
 	mov 	IE,#0B0h							; enable interrupts, enable timer 2 and serial interrupt
 	mov		R1,#10								; initialize R1 to 10 for converting 100Hz to 10Hz
 	mov		running,#0						; initialize running state to off
-
+	mov ms_counter, #0					; initialize the milisecond delay to 0
 ;--------------------------------------------------------------------
 ;loop1
 		
@@ -91,7 +96,8 @@ loop1:
 t2_isr:
 ; first check if we are running 
 	mov		A,running
-	cjne	A,#0,run_state		; if 1 we are running
+	cjne	A,#0,run_state
+			; if 1 we are running
 stop_state:
 	call	chk_btn						; get the values of the buttons, stored in ACC
 	; left button on ACC.6	|		right button on ACC.7
@@ -112,7 +118,12 @@ run_state:
 	; left button on ACC.6 (start/stop)		|		right button on ACC.7 (reset)
 	jb ACC.6,start_stop			; if left btn has been pressed, start or stop the clk
 	jb ACC.4,run_reset			; if right btn pressed, reset the clk to 0
+	djnz ms_counter, no_inc		; check if it's time to increment
+	mov ms_couner, #9
 	reti						; return from the interrupt
+
+no_inc:
+	
 
 run_reset:
 ; reset the numbers back to 0
