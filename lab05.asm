@@ -98,12 +98,48 @@ t2_isr:
 	mov		A,running
 	cjne	A,#0,run_state
 			; if 1 we are running
+
+;--------------------------------------------------------------------
+;stop_state
+		
+;	DESCRIPTION
+;	This subroutine will handle responses to the buttons when the timer
+; is stopped. 
+;
+;--------------------------------------------------------------------
 stop_state:
 	call	chk_btn						; get the values of the buttons, stored in ACC
 	; left button on ACC.6	|		right button on ACC.7
+	jb		ACC.6,stop_to_start		; left button pressed to start the timer
+	jb		ACC.7,stop_reset			; right button pressed to reset the clock
 
 	reti						; return from the interrupt
 
+
+;--------------------------------------------------------------------
+;stop_to_start
+		
+;	DESCRIPTION
+;	When left button is pressed to start the clock 
+;
+;--------------------------------------------------------------------
+stop_to_start:
+	mov		running,#1		; 1 to indicate in running state
+
+	reti								; return from interrupt
+
+;--------------------------------------------------------------------
+;stop_reset
+		
+;	DESCRIPTION
+;	Right button pressed while clock is stopped to reset the clock 
+;
+;--------------------------------------------------------------------
+stop_reset:
+	mov		numbr,#0			; reset whole number value to 0
+	mov		decimal,#0		; reset decimal number value to 0
+
+	reti
 
 ;--------------------------------------------------------------------
 ;run_state
@@ -117,14 +153,22 @@ run_state:
 	call	chk_btn						; get the values of the buttons, stored in ACC
 	; left button on ACC.6 (start/stop)		|		right button on ACC.7 (reset)
 	jb ACC.6,start_stop			; if left btn has been pressed, start or stop the clk
-	jb ACC.4,run_reset			; if right btn pressed, reset the clk to 0
+	jb ACC.7,run_reset			; if right btn pressed, reset the clk to 0
+	;??????????????????????? do we want to inc counter before a reset? probably not
 	djnz ms_counter, no_inc		; check if it's time to increment
-	mov ms_couner, #9
+	mov ms_counter, #9
 	reti						; return from the interrupt
 
 no_inc:
 	
 
+;--------------------------------------------------------------------
+;stop_reset
+		
+;	DESCRIPTION
+;	Right button pressed while clock is stopped to reset the clock 
+;
+;--------------------------------------------------------------------
 run_reset:
 ; reset the numbers back to 0
 	mov		numbr,#0		; reset number value to 0
