@@ -34,7 +34,7 @@ $include (c8051f020.inc)
 
 
 	cseg
-	jmp main
+	jmp setup
 
 int_serial:
 	org 0023H				; location where timer interrupt will jump to
@@ -46,18 +46,14 @@ int_t2:
 
 
 ;--------------------------------------------------------------------
-;main
+;SETUP
 		
 ;	DESCRIPTION
 ;	PC will jump to this subroutine and will only run once then proceed
 ; down into loop1. Should only run these lines of code 1 time upon
 ; starting up.
 ;--------------------------------------------------------------------
-
-;main
-
-main:
-
+setup:
 	mov wdtcn,#0DEh 	; disable watchdog
 	mov wdtcn,#0ADh
 	mov xbr2,#40h	    ; enable port output
@@ -70,15 +66,15 @@ main:
 
 	wait1:
 		jnb tf1,wait1
-		clr tr1		    ; 1ms has elapsed, stop timer
+		clr tr1		    	; 1ms has elapsed, stop timer
 		clr tf1
 	wait2:
-		mov a,oscxcn	; now wait for crystal to stabilize
+		mov a,oscxcn		; now wait for crystal to stabilize
 		jnb acc.7, wait2
-		mov oscicn,#8	; engage! Now using 22.1184MHz
+		mov oscicn,#8		; engage! Now using 22.1184MHz
 		mov scon0,#50H	; 8-bit, variable baud, receive enable
 		mov th1,#-6	    ; 9600 baud
-		setb tr1	    ; start baud clock
+		setb tr1	   		; start baud clock
 		
 	
 ;---------------------------------------------
@@ -97,12 +93,12 @@ main:
 	mov 	ms_counter,#9h				; initialize the milisecond delay to 0
 	mov 	trans_cnt,#0h
 ;--------------------------------------------------------------------
-;M
+;Main
 ;	DESCRIPTION
 ;	Wait in this loop for the interrupts.
 ;--------------------------------------------------------------------
-loop1:
-	jmp loop1
+main: 
+	jmp main
 	
 
 ;--------------------------------------------------------------------
@@ -123,7 +119,6 @@ t2_isr:
 	clr 	TF2		; clear timer 2 interrupt flag
 	mov		A,running
 	cjne	A,#0,run_state
-			; if 1 we are running
 
 ;--------------------------------------------------------------------
 ;stop_state
@@ -135,7 +130,6 @@ t2_isr:
 ;--------------------------------------------------------------------
 stop_state:
 	call	chk_btn						; get the values of the buttons, stored in ACC
-	; left button on ACC.6	|		right button on ACC.7
 	jb		ACC.6,stop_to_start		; left button pressed to start the timer
 	jb		ACC.7,stop_reset			; right button pressed to reset the clock
 
@@ -163,7 +157,7 @@ stop_to_start:
 ;--------------------------------------------------------------------
 stop_reset:
 	mov		numbr,#0			; reset whole number value to 0
-	mov		decimal,#0		; reset decimal number value to 0
+	;mov		decimal,#0		; reset decimal number value to 0
 	call 	disp_led			; display the new number, 0
 
 	reti
@@ -185,18 +179,22 @@ run_state:
 	mov ms_counter, #9
 
 ; increment our clock time
-	mov 	A,numbr
-	add 	A,#1			; increment the number
-	mov		numbr,A
-	anl		A,#0Fh		; mask lower 4 bits
-	cjne	A,#0Ah,display_return		; check if we have reached decimal 10
+	;mov 	A,numbr
+	;add 	A,#1			; increment the number
+	;mov		numbr,A
+	;anl		A,#0Fh		; mask lower 4 bits
+	;cjne	A,#0Ah,display_return		; check if we have reached decimal 10
 	; reached X.9, need to increment whole number and reset decimal
-	mov		A,numbr
-	add		A,#10h		; increment whole number portion
-	anl		A,#0F0h		; reset dcimal portion and copy whole portion
-	mov		numbr,A		; move number back to the stored variable
-	cjne	A,#0A0h,display_return	; check if we have reach 10
-	mov		numbr,#0	; reset the number to 0
+	;mov		A,numbr
+	;add		A,#10h		; increment whole number portion
+	;anl		A,#0F0h		; reset dcimal portion and copy whole portion
+	;mov		numbr,A		; move number back to the stored variable
+	;cjne	A,#0A0h,display_return	; check if we have reach 10
+	;mov		numbr,#0	; reset the number to 0
+	mov A, numbr
+	add A, #1
+	da 	A
+	mov numbr, A
 	jmp		display_return
 
 	reti				; return from the interrupt
@@ -238,7 +236,7 @@ run_reset:
 ; reset the numbers back to 0
 	mov		numbr,#0		; reset number value to 0
 	mov		decimal,#0	; reset decimal value to 0
-	mov 	running,#0	; send to stop state
+	;mov 	running,#0	; send to stop state
 	call 	disp_led		; display new number, 0
 
 	reti							; return from the interrupt
@@ -302,14 +300,14 @@ s_low_compare:
 C_compare:
 	cjne	A,#43h,c_low_compare	; 43h represent 'C' for run
 	mov		numbr,#0					; clear the number
-	mov		running,#0				; mov to stop state
+	;mov		running,#0				; mov to stop state
 	call 	disp_led
 	reti		; return from interrupt
 
 c_low_compare:
 	cjne	A,#63h,T_compare	; 63h represent 'c' for run
 	mov		numbr,#0					; clear the number
-	mov		running,#0				; mov to stop state
+	;mov		running,#0				; mov to stop state
 	call  disp_led
 	reti		; return from interrupt
 
