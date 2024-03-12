@@ -28,11 +28,18 @@ $include (c8051f020.inc)
 	numbr:			ds 1		; whole number value 0-9
 	decimal:		ds 1		; decimal value 0-9
 	running:		ds 1		; 1 if clock is running, 0 if stopped
-	ms_counter:	ds 1		; counter to check 
+	ms_counter:	ds 1		; counter to check for 10 millisecond delay
+	trans_cnt:  ds 1		; counter to keep track of what to send
 	
 
 	cseg
 	jmp main		; jump to main to avoid writing into interrupts
+	mov		wdtcn,#0DEh
+	mov		wdtcn,#0ADh
+
+
+	cseg
+	jmp main
 
 int_serial:
 	org 0020H				; location where timer interrupt will jump to
@@ -52,6 +59,37 @@ int_t2:
 ; starting up.
 ;--------------------------------------------------------------------
 main:
+; Initialization
+; The initialization section disables the watchdog timer to prevent unwanted resets during debugging or initial setup.
+; It configures the microcontroller to use an external oscillator for accurate timing, crucial for serial communication and timing functions.
+; The serial port is configured for 9600 baud, 8 data bits, no parity, and one stop bit (8N1) — a common configuration for UART communication.
+; LEDs are initialized to an off state to ensure a known startup condition.
+; Initial carriage return and line feed are sent over serial to indicate the program has started and is ready to operate.
+
+
+	mov wdtcn,#0DEh 	; disable watchdog
+	mov wdtcn,#0ADh
+	mov xbr2,#40h	    ; enable port output
+	mov xbr0,#04h	    ; enable uart 0
+	setb P2.7                   ; Input button (right)
+	mov oscxcn,#67H	  ; turn on external crystal
+	mov tmod,#20H	    ; wait 1ms using T1 mode 2
+	mov th1,#256-167	; 2MHz clock, 167 counts = 1ms
+	setb tr1
+
+	wait1:
+		jnb tf1,wait1
+		clr tr1		    ; 1ms has elapsed, stop timer
+		clr tf1
+	wait2:
+		mov a,oscxcn	; now wait for crystal to stabilize
+		jnb acc.7, wait2
+		mov oscicn,#8	; engage! Now using 22.1184MHz
+		mov scon0,#50H	; 8-bit, variable baud, receive enable
+		mov th1,#-6	    ; 9600 baud
+		setb tr1	    ; start baud clock
+	
+;---------------------------------------------
 	
 	mov		wdtcn,#0DEh
 	mov		wdtcn,#0ADh
@@ -68,9 +106,9 @@ main:
 	mov		R1,#10								; initialize R1 to 10 for converting 100Hz to 10Hz
 	mov		running,#1						; initialize running state to off
 	mov ms_counter, #0					; initialize the milisecond delay to 0
+	mov trans_cnt, #0
 ;--------------------------------------------------------------------
-;loop1
-		
+;M
 ;	DESCRIPTION
 ;	Wait in this loop for the interrupts.
 ;--------------------------------------------------------------------
@@ -236,8 +274,8 @@ start_stop:
 ;
 ;--------------------------------------------------------------------
 serial_isr:
-	jb		RI,receive_state
-	jb		TI,transmit_state
+	jbc		RI,receive_state
+	jbc		TI,transmit_state
 
 	reti		; return from interrupt
 
@@ -251,7 +289,6 @@ serial_isr:
 ;--------------------------------------------------------------------
 receive_state:
 	mov 	A,SBUF0						;	SBUF0 holds value of serial port
-	clr 	RI								; clear receive interrupt flag
 	cjne	A,#52h,r_compare	; 52h represent 'R' for run
 	mov		running,#1				; mov to running state
 	reti		; return from interrupt
@@ -305,6 +342,10 @@ end_compare:
 ;
 ;--------------------------------------------------------------------
 transmit_time:
+	mov 	R3, numbr			;save the number
+	mov 	A, R3
+	anl 	A, #11110000b
+	mov 	SBUF0, 11
 
 ;--------------------------------------------------------------------
 ;transmit_state
@@ -315,8 +356,7 @@ transmit_time:
 ;
 ;--------------------------------------------------------------------
 transmit_state:
-	clr TI	; clear transmit interrupt flag
-
+	
 ;-------------------------------------------------------
 ;CHECK_BUTTON
 ;
