@@ -95,6 +95,7 @@ loop1:
 ;--------------------------------------------------------------------
 t2_isr:
 ; first check if we are running 
+	clr 	TF2		; clear timer 2 interrupt flag
 	mov		A,running
 	cjne	A,#0,run_state
 			; if 1 we are running
@@ -173,6 +174,8 @@ run_reset:
 ; reset the numbers back to 0
 	mov		numbr,#0		; reset number value to 0
 	mov		decimal,#0	; reset decimal value to 0
+	mov 	running,#0	; send to stop state
+
 	reti							; return from the interrupt
 
 ;--------------------------------------------------------------------
@@ -197,8 +200,86 @@ start_stop:
 ;
 ;--------------------------------------------------------------------
 serial_isr:
+	jb		RI,receive_state
+	jb		TI,transmit_state
 
 	reti		; return from interrupt
+
+;--------------------------------------------------------------------
+;receive_state
+		
+;	DESCRIPTION
+;	Jump to this state when we have received a character on the serial
+;	port
+;
+;--------------------------------------------------------------------
+receive_state:
+	mov 	A,SBUF0						;	SBUF0 holds value of serial port
+	clr 	RI								; clear receive interrupt flag
+	cjne	A,#52h,r_compare	; 52h represent 'R' for run
+	mov		running,#1				; mov to running state
+	reti		; return from interrupt
+
+r_compare:
+	cjne	A,#72h,S_compare	; 72h represent 'r' for run
+	mov		running,#1				; mov to running state
+	reti		; return from interrupt
+
+S_compare:
+	cjne	A,#53h,s_low_compare	; 53h represent 'S' for run
+	mov		running,#0				; mov to stop state
+	reti		; return from interrupt
+
+s_low_compare:
+	cjne	A,#73h,C_compare	; 73h represent 's' for run
+	mov		running,#0				; mov to stop state
+	reti		; return from interrupt
+
+C_compare:
+	cjne	A,#43h,c_low_compare	; 43h represent 'C' for run
+	mov		numbr,#0					; clear the number
+	mov		running,#0				; mov to stop state
+	reti		; return from interrupt
+
+c_low_compare:
+	cjne	A,#63h,T_compare	; 63h represent 'c' for run
+	mov		numbr,#0					; clear the number
+	mov		running,#0				; mov to stop state
+	reti		; return from interrupt
+
+T_compare:
+	cjne	A,#54h,t_low_compare	; 54h represent 'T' for run
+	jmp		transmit_time
+	reti		; return from interrupt
+
+t_low_compare:
+	cjne	A,#74h,end_compare	; 74h represent 't' for run
+	jmp		transmit_time
+	reti		; return from interrupt
+
+end_compare:
+	reti		; return from interrupt, no acition taken
+
+
+;--------------------------------------------------------------------
+;transmit_time
+		
+;	DESCRIPTION
+;	Transmit the time of our clock
+;
+;--------------------------------------------------------------------
+transmit_time:
+
+;--------------------------------------------------------------------
+;transmit_state
+		
+;	DESCRIPTION
+;	Jump to this state when we have received a character on the serial
+;	port
+;
+;--------------------------------------------------------------------
+transmit_state:
+	clr TI	; clear transmit interrupt flag
 
 ;-------------------------------------------------------
 ;CHECK_BUTTON
