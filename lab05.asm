@@ -32,26 +32,12 @@ $include (c8051f020.inc)
 	trans_cnt:  ds 1		; counter to keep track of what to send
 	
 
+
 	cseg
-	mov		wdtcn,#0DEh
-	mov		wdtcn,#0ADh
-
-
-; Initialization
-; The initialization section disables the watchdog timer to prevent unwanted resets during debugging or initial setup.
-; It configures the microcontroller to use an external oscillator for accurate timing, crucial for serial communication and timing functions.
-; The serial port is configured for 9600 baud, 8 data bits, no parity, and one stop bit (8N1) — a common configuration for UART communication.
-; LEDs are initialized to an off state to ensure a known startup condition.
-; Initial carriage return and line feed are sent over serial to indicate the program has started and is ready to operate.
-
-
-
-	
-;---------------------------------------------
-
+	jmp main
 
 int_serial:
-	org 0020H				; location where timer interrupt will jump to
+	org 0023H				; location where timer interrupt will jump to
 	jmp serial_isr	; jump to serial interrupt service routine
 
 int_t2:
@@ -68,11 +54,15 @@ int_t2:
 ; starting up.
 ;--------------------------------------------------------------------
 
-	;mov wdtcn,#0DEh 	; disable watchdog
-	;mov wdtcn,#0ADh
+;main
+
+main:
+
+	mov wdtcn,#0DEh 	; disable watchdog
+	mov wdtcn,#0ADh
 	mov xbr2,#40h	    ; enable port output
 	mov xbr0,#04h	    ; enable uart 0
-	setb P2.7                   ; Input button (right)
+	;setb P2.7                   ; Input button (right)
 	mov oscxcn,#67H	  ; turn on external crystal
 	mov tmod,#20H	    ; wait 1ms using T1 mode 2
 	mov th1,#256-167	; 2MHz clock, 167 counts = 1ms
@@ -89,8 +79,11 @@ int_t2:
 		mov scon0,#50H	; 8-bit, variable baud, receive enable
 		mov th1,#-6	    ; 9600 baud
 		setb tr1	    ; start baud clock
-		jmp main
+		
+	
+;---------------------------------------------
 
+	
 ; fosc = 22.1184 MHz. => fosc/12 * 10ms = 18432. This is the value
 	; used for timer 2 to obtain an overflow every 10ms
 	mov 	RCAP2H,#HIGH(-18432)	; set high bits for timer
@@ -100,15 +93,14 @@ int_t2:
 	setb	TR2										; start the timer
 	mov 	IE,#0B0h							; enable interrupts, enable timer 2 and serial interrupt
 	mov		R1,#10								; initialize R1 to 10 for converting 100Hz to 10Hz
-	mov		running,#0						; initialize running state to off
-	mov ms_counter, #0					; initialize the milisecond delay to 0
-	mov trans_cnt, #0
+	mov		running,#1						; initialize running state to off
+	mov 	ms_counter,#9h				; initialize the milisecond delay to 0
+	mov 	trans_cnt,#0h
 ;--------------------------------------------------------------------
 ;M
 ;	DESCRIPTION
 ;	Wait in this loop for the interrupts.
 ;--------------------------------------------------------------------
-main:
 loop1:
 	jmp loop1
 	
@@ -172,6 +164,7 @@ stop_to_start:
 stop_reset:
 	mov		numbr,#0			; reset whole number value to 0
 	mov		decimal,#0		; reset decimal number value to 0
+	call 	disp_led			; display the new number, 0
 
 	reti
 
@@ -188,13 +181,51 @@ run_state:
 	; left button on ACC.6 (start/stop)		|		right button on ACC.7 (reset)
 	jb ACC.6,start_stop			; if left btn has been pressed, start or stop the clk
 	jb ACC.7,run_reset			; if right btn pressed, reset the clk to 0
-	;??????????????????????? do we want to inc counter before a reset? probably not
 	djnz ms_counter, no_inc		; check if it's time to increment
 	mov ms_counter, #9
-	reti						; return from the interrupt
+
+; increment our clock time
+	mov 	A,numbr
+	add 	A,#1			; increment the number
+	mov		numbr,A
+	anl		A,#0Fh		; mask lower 4 bits
+	cjne	A,#0Ah,display_return		; check if we have reached decimal 10
+	; reached X.9, need to increment whole number and reset decimal
+	mov		A,numbr
+	add		A,#10h		; increment whole number portion
+	anl		A,#0F0h		; reset dcimal portion and copy whole portion
+	mov		numbr,A		; move number back to the stored variable
+	cjne	A,#0A0h,display_return	; check if we have reach 10
+	mov		numbr,#0	; reset the number to 0
+	jmp		display_return
+
+	reti				; return from the interrupt
+
+display_return:
+	call disp_led		; function to display on LED
+	reti						;return from interrupt
 
 no_inc:
+	reti				; return from the interrupt
 	
+
+;--------------------------------------------------------------------
+;disp_led
+		
+;	DESCRIPTION
+;	Display our decimal number on the LED bar in 8-bit representation
+;
+;--------------------------------------------------------------------
+disp_led:
+	; logic 0 will turn on LED
+	; first clear the LEDs
+	mov 	P3,#0FFh
+	setb 	P2.0
+	setb 	P2.1
+	mov		A,numbr	
+	cpl		A				; cpl number value before displaying it
+	mov P3,A			; move number into P3 to only display 8-bits
+	ret
 
 ;--------------------------------------------------------------------
 ;stop_reset
@@ -208,6 +239,7 @@ run_reset:
 	mov		numbr,#0		; reset number value to 0
 	mov		decimal,#0	; reset decimal value to 0
 	mov 	running,#0	; send to stop state
+	call 	disp_led		; display new number, 0
 
 	reti							; return from the interrupt
 
@@ -271,12 +303,14 @@ C_compare:
 	cjne	A,#43h,c_low_compare	; 43h represent 'C' for run
 	mov		numbr,#0					; clear the number
 	mov		running,#0				; mov to stop state
+	call 	disp_led
 	reti		; return from interrupt
 
 c_low_compare:
 	cjne	A,#63h,T_compare	; 63h represent 'c' for run
 	mov		numbr,#0					; clear the number
 	mov		running,#0				; mov to stop state
+	call  disp_led
 	reti		; return from interrupt
 
 T_compare:
@@ -304,10 +338,12 @@ transmit_time:
 	mov 	R3, numbr			;save the number
 	mov 	A, R3					;mov and mask the value
 	anl 	A, #11110000b	
-	add 	A, #30				; change to ascii representation
+	swap  A
+	add 	A, #30h				; change to ascii representation
 	mov 	SBUF0, A			;send the first value
-	inc 	trans_cnt			;increment the count to keep track of what to send
 
+	inc 	trans_cnt			;increment the count to keep track of what to send
+	reti
 ;--------------------------------------------------------------------
 ;transmit_state
 		
@@ -319,7 +355,7 @@ transmit_time:
 transmit_state:
 	mov  A, #1
 	cjne A, trans_cnt, not_one 		;statement for period
-	mov SBUF0, #46
+	mov SBUF0, #2Eh
 
 	inc		trans_cnt
 	reti
@@ -327,8 +363,8 @@ not_one:
 	mov  A, #2
 	cjne A, trans_cnt, not_two   ;statement for milliseconds
 	mov 	A, R3									 ;mov and mask the value
-	anl 	A, #11110000b	
-	add 	A, #30								 ; change to ascii representation
+	anl 	A, #0Fh	
+	add 	A, #30h								 ; change to ascii representation
 	mov 	SBUF0, A	
 
 	inc		trans_cnt
@@ -349,7 +385,7 @@ not_three:											;statement for Line Feed
 	reti
 
 not_four:
-	mov 	trans_cnt, #0
+	mov 	trans_cnt, #0h
 	reti
 	
 
