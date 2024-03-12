@@ -90,9 +90,6 @@ main:
 		setb tr1	    ; start baud clock
 	
 ;---------------------------------------------
-	
-	mov		wdtcn,#0DEh
-	mov		wdtcn,#0ADh
 
 	mov			xbr2,#40H		; activate I/O ports
 ; fosc = 22.1184 MHz. => fosc/12 * 10ms = 18432. This is the value
@@ -105,8 +102,8 @@ main:
 	mov 	IE,#0B0h							; enable interrupts, enable timer 2 and serial interrupt
 	mov		R1,#10								; initialize R1 to 10 for converting 100Hz to 10Hz
 	mov		running,#1						; initialize running state to off
-	mov ms_counter, #0					; initialize the milisecond delay to 0
-	mov trans_cnt, #0
+	mov 	ms_counter,#9h				; initialize the milisecond delay to 0
+	mov 	trans_cnt,#0h
 ;--------------------------------------------------------------------
 ;M
 ;	DESCRIPTION
@@ -175,6 +172,7 @@ stop_to_start:
 stop_reset:
 	mov		numbr,#0			; reset whole number value to 0
 	mov		decimal,#0		; reset decimal number value to 0
+	call 	disp_led			; display the new number, 0
 
 	reti
 
@@ -249,6 +247,7 @@ run_reset:
 	mov		numbr,#0		; reset number value to 0
 	mov		decimal,#0	; reset decimal value to 0
 	mov 	running,#0	; send to stop state
+	call 	disp_led		; display new number, 0
 
 	reti							; return from the interrupt
 
