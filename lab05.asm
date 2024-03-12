@@ -32,11 +32,6 @@ $include (c8051f020.inc)
 	
 
 	cseg
-	mov		wdtcn,#0DEh
-	mov		wdtcn,#0ADh
-
-	mov			xbr2,#40H		; activate I/O ports
-;---------------------------------------------
 	jmp main		; jump to main to avoid writing into interrupts
 
 int_serial:
@@ -58,7 +53,10 @@ int_t2:
 ;--------------------------------------------------------------------
 main:
 	
+	mov		wdtcn,#0DEh
+	mov		wdtcn,#0ADh
 
+	mov			xbr2,#40H		; activate I/O ports
 ; fosc = 22.1184 MHz. => fosc/12 * 10ms = 18432. This is the value
 	; used for timer 2 to obtain an overflow every 10ms
 	mov 	RCAP2H,#HIGH(-18432)	; set high bits for timer
@@ -68,7 +66,7 @@ main:
 	setb	TR2										; start the timer
 	mov 	IE,#0B0h							; enable interrupts, enable timer 2 and serial interrupt
 	mov		R1,#10								; initialize R1 to 10 for converting 100Hz to 10Hz
-	mov		running,#0						; initialize running state to off
+	mov		running,#1						; initialize running state to off
 	mov ms_counter, #0					; initialize the milisecond delay to 0
 ;--------------------------------------------------------------------
 ;loop1
@@ -155,13 +153,51 @@ run_state:
 	; left button on ACC.6 (start/stop)		|		right button on ACC.7 (reset)
 	jb ACC.6,start_stop			; if left btn has been pressed, start or stop the clk
 	jb ACC.7,run_reset			; if right btn pressed, reset the clk to 0
-	;??????????????????????? do we want to inc counter before a reset? probably not
 	djnz ms_counter, no_inc		; check if it's time to increment
 	mov ms_counter, #9
-	reti						; return from the interrupt
+
+; increment our clock time
+	mov 	A,numbr
+	add 	A,#1			; increment the number
+	mov		numbr,A
+	anl		A,#0Fh		; mask lower 4 bits
+	cjne	A,#0Ah,display_return		; check if we have reached decimal 10
+	; reached X.9, need to increment whole number and reset decimal
+	mov		A,numbr
+	add		A,#10h		; increment whole number portion
+	anl		A,#0F0h		; reset dcimal portion and copy whole portion
+	mov		numbr,A		; move number back to the stored variable
+	cjne	A,#0A0h,display_return	; check if we have reach 10
+	mov		numbr,#0	; reset the number to 0
+	jmp		display_return
+
+	reti				; return from the interrupt
+
+display_return:
+	call disp_led		; function to display on LED
+	reti						;return from interrupt
 
 no_inc:
+	reti				; return from the interrupt
 	
+
+;--------------------------------------------------------------------
+;disp_led
+		
+;	DESCRIPTION
+;	Display our decimal number on the LED bar in 8-bit representation
+;
+;--------------------------------------------------------------------
+disp_led:
+	; logic 0 will turn on LED
+	; first clear the LEDs
+	mov 	P3,#0FFh
+	setb 	P2.0
+	setb 	P2.1
+	mov		A,numbr	
+	cpl		A				; cpl number value before displaying it
+	mov P3,A			; move number into P3 to only display 8-bits
+	ret
 
 ;--------------------------------------------------------------------
 ;stop_reset
