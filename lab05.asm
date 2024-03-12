@@ -37,8 +37,6 @@ $include (c8051f020.inc)
 	mov		wdtcn,#0ADh
 
 
-	cseg
-
 ; Initialization
 ; The initialization section disables the watchdog timer to prevent unwanted resets during debugging or initial setup.
 ; It configures the microcontroller to use an external oscillator for accurate timing, crucial for serial communication and timing functions.
@@ -47,28 +45,7 @@ $include (c8051f020.inc)
 ; Initial carriage return and line feed are sent over serial to indicate the program has started and is ready to operate.
 
 
-	mov wdtcn,#0DEh 	; disable watchdog
-	mov wdtcn,#0ADh
-	mov xbr2,#40h	    ; enable port output
-	mov xbr0,#04h	    ; enable uart 0
-	setb P2.7                   ; Input button (right)
-	mov oscxcn,#67H	  ; turn on external crystal
-	mov tmod,#20H	    ; wait 1ms using T1 mode 2
-	mov th1,#256-167	; 2MHz clock, 167 counts = 1ms
-	setb tr1
 
-	wait1:
-		jnb tf1,wait1
-		clr tr1		    ; 1ms has elapsed, stop timer
-		clr tf1
-	wait2:
-		mov a,oscxcn	; now wait for crystal to stabilize
-		jnb acc.7, wait2
-		mov oscicn,#8	; engage! Now using 22.1184MHz
-		mov scon0,#50H	; 8-bit, variable baud, receive enable
-		mov th1,#-6	    ; 9600 baud
-		setb tr1	    ; start baud clock
-		jmp main
 	
 ;---------------------------------------------
 
@@ -91,7 +68,28 @@ int_t2:
 ; starting up.
 ;--------------------------------------------------------------------
 
-	
+	;mov wdtcn,#0DEh 	; disable watchdog
+	;mov wdtcn,#0ADh
+	mov xbr2,#40h	    ; enable port output
+	mov xbr0,#04h	    ; enable uart 0
+	setb P2.7                   ; Input button (right)
+	mov oscxcn,#67H	  ; turn on external crystal
+	mov tmod,#20H	    ; wait 1ms using T1 mode 2
+	mov th1,#256-167	; 2MHz clock, 167 counts = 1ms
+	setb tr1
+
+	wait1:
+		jnb tf1,wait1
+		clr tr1		    ; 1ms has elapsed, stop timer
+		clr tf1
+	wait2:
+		mov a,oscxcn	; now wait for crystal to stabilize
+		jnb acc.7, wait2
+		mov oscicn,#8	; engage! Now using 22.1184MHz
+		mov scon0,#50H	; 8-bit, variable baud, receive enable
+		mov th1,#-6	    ; 9600 baud
+		setb tr1	    ; start baud clock
+		jmp main
 
 ; fosc = 22.1184 MHz. => fosc/12 * 10ms = 18432. This is the value
 	; used for timer 2 to obtain an overflow every 10ms
@@ -304,9 +302,11 @@ end_compare:
 ;--------------------------------------------------------------------
 transmit_time:
 	mov 	R3, numbr			;save the number
-	mov 	A, R3
-	anl 	A, #11110000b
-	mov 	SBUF0, 11
+	mov 	A, R3					;mov and mask the value
+	anl 	A, #11110000b	
+	add 	A, #30				; change to ascii representation
+	mov 	SBUF0, A			;send the first value
+	inc 	trans_cnt			;increment the count to keep track of what to send
 
 ;--------------------------------------------------------------------
 ;transmit_state
@@ -317,7 +317,43 @@ transmit_time:
 ;
 ;--------------------------------------------------------------------
 transmit_state:
+	mov  A, #1
+	cjne A, trans_cnt, not_one 		;statement for period
+	mov SBUF0, #46
+
+	inc		trans_cnt
+	reti
+not_one:
+	mov  A, #2
+	cjne A, trans_cnt, not_two   ;statement for milliseconds
+	mov 	A, R3									 ;mov and mask the value
+	anl 	A, #11110000b	
+	add 	A, #30								 ; change to ascii representation
+	mov 	SBUF0, A	
+
+	inc		trans_cnt
+	reti
+not_two:	
+	mov  A, #3
+	cjne A, trans_cnt, not_three	;statement for Carriage Return
+	mov	 SBUF0, #0Dh
+
+	inc		trans_cnt
+	reti
+not_three:											;statement for Line Feed
+	mov 	A, #4
+	cjne  A, trans_cnt, not_four  ;statement for end
+	mov SBUf0, #0Ah
+
+	inc 	trans_cnt
+	reti
+
+not_four:
+	mov 	trans_cnt, #0
+	reti
 	
+
+
 ;-------------------------------------------------------
 ;CHECK_BUTTON
 ;
